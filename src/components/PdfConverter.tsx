@@ -4,7 +4,7 @@ import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
 import { loadPDFAsImages, createMultiPageTiff } from '../utils/pdfProcessor';
 import { convertToGrayscale, canvasToBlob, downloadBlob } from '../utils/imageProcessor';
-import { TiffProcessor } from '../utils/tiffProcessor';
+import { TiffProcessor as TiffUtils } from '../utils/tiffProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function PdfConverter() {
@@ -108,7 +108,7 @@ export default function PdfConverter() {
             
             // Convert to image
             let finalBlob: Blob;
-            finalBlob = await TiffProcessor.canvasesToTiff(canvases, options.dpi);
+            finalBlob = await TiffUtils.canvasesToTiff(canvases, options.dpi);
             
             const downloadUrl = URL.createObjectURL(finalBlob);
             console.log(`PDF procesado exitosamente: ${file.name}`);
@@ -155,7 +155,7 @@ export default function PdfConverter() {
       if (file.processedName.endsWith('.tiff')) {
         fetch(file.downloadUrl)
           .then(response => response.blob())
-          .then(blob => TiffProcessor.downloadTiff(blob, file.processedName))
+          .then(blob => TiffUtils.downloadTiff(blob, file.processedName))
           .catch(error => console.error('Error downloading file:', error));
       } else {
         fetch(file.downloadUrl)

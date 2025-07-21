@@ -3,10 +3,10 @@ import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
 import { loadImageToCanvas, convertToGrayscale, resizeCanvas, canvasToBlob, downloadBlob } from '../utils/imageProcessor';
-import { TiffProcessor } from '../utils/tiffProcessor';
+import { TiffProcessor as TiffUtils } from '../utils/tiffProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
-export default function TiffProcessor() {
+export default function TiffProcessorComponent() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]);
   const [options, setOptions] = useState<ProcessingOptions>({
@@ -62,7 +62,7 @@ export default function TiffProcessor() {
         }
         
         // Convert to blob
-        const processedBlob = await TiffProcessor.canvasToTiff(canvas, options.dpi);
+        const processedBlob = await TiffUtils.canvasToTiff(canvas, options.dpi);
         const downloadUrl = URL.createObjectURL(processedBlob);
         console.log('Archivo procesado exitosamente');
         
@@ -101,7 +101,7 @@ export default function TiffProcessor() {
       if (file.processedName.endsWith('.tiff')) {
         fetch(file.downloadUrl)
           .then(response => response.blob())
-          .then(blob => TiffProcessor.downloadTiff(blob, file.processedName))
+          .then(blob => TiffUtils.downloadTiff(blob, file.processedName))
           .catch(error => console.error('Error downloading file:', error));
       } else {
         fetch(file.downloadUrl)
