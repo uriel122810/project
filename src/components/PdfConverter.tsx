@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
+import { loadPDFAsImages, combineCanvasesToTiff } from '../utils/pdfProcessor';
+import { convertToGrayscale } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function PdfConverter() {
@@ -54,20 +56,82 @@ export default function PdfConverter() {
 
     setProcessedFiles(newProcessedFiles);
 
-    // Simulate processing
-    for (let i = 0; i < newProcessedFiles.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 4000));
-      
+    try {
+      if (combineFiles && selectedFiles.length > 1) {
+        // Process combined files
+        const allCanvases: HTMLCanvasElement[] = [];
+        
+        for (const file of selectedFiles) {
+          const canvases = await loadPDFAsImages(file);
+          allCanvases.push(...canvases);
+        }
+        
+        // Apply grayscale if enabled
+        if (options.grayscale) {
+          allCanvases.forEach(canvas => convertToGrayscale(canvas));
+        }
+        
+        // Combine all canvases into one TIFF
+        const combinedBlob = await combineCanvasesToTiff(allCanvases, options.dpi);
+        const downloadUrl = URL.createObjectURL(combinedBlob);
+        
+        setProcessedFiles(prev => 
+          prev.map(file => 
+            file.id === newProcessedFiles[0].id
+              ? {
+                  ...file,
+                  status: 'completed',
+                  downloadUrl: downloadUrl
+                }
+              : file
+          )
+        );
+      } else {
+        // Process each PDF separately
+        for (let i = 0; i < selectedFiles.length; i++) {
+          try {
+            const file = selectedFiles[i];
+            const canvases = await loadPDFAsImages(file);
+            
+            // Apply grayscale if enabled
+            if (options.grayscale) {
+              canvases.forEach(canvas => convertToGrayscale(canvas));
+            }
+            
+            // Convert to TIFF
+            const tiffBlob = await combineCanvasesToTiff(canvases, options.dpi);
+            const downloadUrl = URL.createObjectURL(tiffBlob);
+            
+            setProcessedFiles(prev => 
+              prev.map(processedFile => 
+                processedFile.id === newProcessedFiles[i].id
+                  ? {
+                      ...processedFile,
+                      status: 'completed',
+                      downloadUrl: downloadUrl
+                    }
+                  : processedFile
+              )
+            );
+          } catch (error) {
+            console.error('Error processing PDF:', error);
+            setProcessedFiles(prev => 
+              prev.map(processedFile => 
+                processedFile.id === newProcessedFiles[i].id
+                  ? {
+                      ...processedFile,
+                      status: 'error'
+                    }
+                  : processedFile
+              )
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in PDF processing:', error);
       setProcessedFiles(prev => 
-        prev.map(file => 
-          file.id === newProcessedFiles[i].id
-            ? {
-                ...file,
-                status: Math.random() > 0.05 ? 'completed' : 'error',
-                downloadUrl: Math.random() > 0.05 ? URL.createObjectURL(selectedFiles[0]) : undefined
-              }
-            : file
-        )
+        prev.map(file => ({ ...file, status: 'error' }))
       );
     }
 

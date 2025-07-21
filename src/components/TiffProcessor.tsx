@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
+import { loadImageToCanvas, convertToGrayscale, resizeCanvas, canvasToBlob } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function TiffProcessor() {
@@ -37,21 +38,52 @@ export default function TiffProcessor() {
 
     setProcessedFiles(newProcessedFiles);
 
-    // Simulate processing
-    for (let i = 0; i < newProcessedFiles.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
-      
-      setProcessedFiles(prev => 
-        prev.map(file => 
-          file.id === newProcessedFiles[i].id
-            ? {
-                ...file,
-                status: Math.random() > 0.1 ? 'completed' : 'error',
-                downloadUrl: Math.random() > 0.1 ? URL.createObjectURL(selectedFiles[i]) : undefined
-              }
-            : file
-        )
-      );
+    // Real processing
+    for (let i = 0; i < selectedFiles.length; i++) {
+      try {
+        const file = selectedFiles[i];
+        
+        // Load image to canvas
+        let canvas = await loadImageToCanvas(file);
+        
+        // Apply grayscale conversion if enabled
+        if (options.grayscale) {
+          canvas = convertToGrayscale(canvas);
+        }
+        
+        // Resize based on DPI if needed
+        if (options.dpi !== 96) {
+          canvas = resizeCanvas(canvas, options.dpi);
+        }
+        
+        // Convert to blob
+        const processedBlob = await canvasToBlob(canvas, options.quality);
+        const downloadUrl = URL.createObjectURL(processedBlob);
+        
+        setProcessedFiles(prev => 
+          prev.map(processedFile => 
+            processedFile.id === newProcessedFiles[i].id
+              ? {
+                  ...processedFile,
+                  status: 'completed',
+                  downloadUrl: downloadUrl
+                }
+              : processedFile
+          )
+        );
+      } catch (error) {
+        console.error('Error processing file:', error);
+        setProcessedFiles(prev => 
+          prev.map(processedFile => 
+            processedFile.id === newProcessedFiles[i].id
+              ? {
+                  ...processedFile,
+                  status: 'error'
+                }
+              : processedFile
+          )
+        );
+      }
     }
 
     setIsProcessing(false);
