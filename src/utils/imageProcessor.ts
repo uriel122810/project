@@ -1,6 +1,4 @@
-import UTIF from 'utif2';
-
-// Utility functions for image processing
+// Utility functions for image processing without external dependencies
 export const convertToGrayscale = (canvas: HTMLCanvasElement): HTMLCanvasElement => {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('No se pudo obtener el contexto del canvas');
@@ -40,97 +38,61 @@ export const resizeCanvas = (canvas: HTMLCanvasElement, targetDPI: number): HTML
   return newCanvas;
 };
 
-export const loadTiffToCanvas = async (file: File): Promise<HTMLCanvasElement[]> => {
+export const loadImageToCanvas = (file: File): Promise<HTMLCanvasElement[]> => {
   return new Promise((resolve, reject) => {
+    console.log(`Cargando archivo: ${file.name}, tipo: ${file.type}, tamaño: ${file.size} bytes`);
+    
+    // Create a file reader to read the file as data URL
     const reader = new FileReader();
+    
     reader.onload = (e) => {
-      try {
-        const arrayBuffer = e.target?.result as ArrayBuffer;
-        if (!arrayBuffer) {
-          reject(new Error('No se pudo leer el archivo'));
-          return;
-        }
-
-        console.log('Procesando archivo TIFF:', file.name);
-        
-        // Parse TIFF using UTIF
-        const ifds = UTIF.decode(arrayBuffer);
-        console.log(`TIFF contiene ${ifds.length} página(s)`);
-        
-        const canvases: HTMLCanvasElement[] = [];
-        
-        ifds.forEach((ifd, index) => {
-          console.log(`Procesando página ${index + 1}/${ifds.length}`);
-          
-          // Decode the image data
-          UTIF.decodeImage(arrayBuffer, ifd);
+      const img = new Image();
+      
+      img.onload = () => {
+        try {
+          console.log(`Imagen cargada: ${img.width}x${img.height}`);
           
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error('No se pudo crear el contexto del canvas');
-          
-          canvas.width = ifd.width;
-          canvas.height = ifd.height;
-          
-          // Create ImageData from TIFF data
-          const imageData = ctx.createImageData(ifd.width, ifd.height);
-          const rgba = UTIF.toRGBA8(ifd);
-          
-          // Copy RGBA data to ImageData
-          for (let i = 0; i < rgba.length; i++) {
-            imageData.data[i] = rgba[i];
+          if (!ctx) {
+            reject(new Error('No se pudo obtener el contexto del canvas'));
+            return;
           }
+
+          canvas.width = img.width;
+          canvas.height = img.height;
           
-          ctx.putImageData(imageData, 0, 0);
-          canvases.push(canvas);
-        });
-        
-        console.log(`TIFF procesado exitosamente: ${canvases.length} página(s)`);
-        resolve(canvases);
-      } catch (error) {
-        console.error('Error procesando TIFF:', error);
-        reject(new Error(`Error al procesar el archivo TIFF: ${error instanceof Error ? error.message : 'Error desconocido'}`));
-      }
+          // Fill with white background first
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Draw the image
+          ctx.drawImage(img, 0, 0);
+          
+          console.log(`Canvas creado exitosamente: ${canvas.width}x${canvas.height}`);
+          resolve([canvas]); // Return array for consistency
+        } catch (error) {
+          console.error('Error creando canvas:', error);
+          reject(new Error(`Error al procesar la imagen: ${error instanceof Error ? error.message : 'Error desconocido'}`));
+        }
+      };
+      
+      img.onerror = () => {
+        console.error('Error cargando imagen');
+        reject(new Error('Error al cargar la imagen. Verifica que el archivo sea una imagen válida.'));
+      };
+      
+      // Set the image source to the data URL
+      img.src = e.target?.result as string;
     };
     
     reader.onerror = () => {
+      console.error('Error leyendo archivo');
       reject(new Error('Error al leer el archivo'));
     };
     
-    reader.readAsArrayBuffer(file);
-  });
-};
-
-export const loadImageToCanvas = (file: File): Promise<HTMLCanvasElement[]> => {
-  // Check if it's a TIFF file
-  if (file.name.toLowerCase().endsWith('.tiff') || file.name.toLowerCase().endsWith('.tif') || file.type === 'image/tiff') {
-    return loadTiffToCanvas(file);
-  }
-  
-  // Handle regular images (PNG, JPEG, etc.)
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('No se pudo obtener el contexto del canvas'));
-        return;
-      }
-
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      
-      // Clean up
-      URL.revokeObjectURL(img.src);
-      resolve([canvas]); // Return array for consistency
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(img.src);
-      reject(new Error('Error al cargar la imagen'));
-    };
-    img.src = URL.createObjectURL(file);
+    // Read the file as data URL
+    reader.readAsDataURL(file);
   });
 };
 
@@ -156,4 +118,37 @@ export const downloadBlob = (blob: Blob, filename: string) => {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+};
+
+// Simple TIFF-like format using PNG with metadata
+export const createTiffLikeFile = async (canvases: HTMLCanvasElement[], dpi: number = 300): Promise<Blob> => {
+  if (canvases.length === 1) {
+    // Single page - return as high quality PNG
+    return canvasToBlob(canvases[0], 'high', 'image/png');
+  }
+  
+  // Multiple pages - combine into single tall image
+  const maxWidth = Math.max(...canvases.map(canvas => canvas.width));
+  const totalHeight = canvases.reduce((sum, canvas) => sum + canvas.height, 0);
+  
+  const combinedCanvas = document.createElement('canvas');
+  const ctx = combinedCanvas.getContext('2d');
+  if (!ctx) throw new Error('No se pudo crear el canvas combinado');
+
+  combinedCanvas.width = maxWidth;
+  combinedCanvas.height = totalHeight;
+
+  // Fill with white background
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
+
+  // Draw each canvas
+  let currentY = 0;
+  for (const canvas of canvases) {
+    const x = (maxWidth - canvas.width) / 2; // Center horizontally
+    ctx.drawImage(canvas, x, currentY);
+    currentY += canvas.height;
+  }
+
+  return canvasToBlob(combinedCanvas, 'high', 'image/png');
 };

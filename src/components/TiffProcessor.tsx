@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
-import { loadImageToCanvas, convertToGrayscale, resizeCanvas } from '../utils/imageProcessor';
-import { TiffProcessor as TiffUtils } from '../utils/tiffProcessor';
+import { loadImageToCanvas, convertToGrayscale, resizeCanvas, createTiffLikeFile, downloadBlob } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function TiffProcessorComponent() {
@@ -45,7 +44,7 @@ export default function TiffProcessorComponent() {
         const file = selectedFiles[i];
         console.log(`Procesando archivo: ${file.name}`);
         
-        // Load image(s) to canvas - TIFF files may have multiple pages
+        // Load image to canvas
         const canvases = await loadImageToCanvas(file);
         console.log(`Archivo cargado: ${canvases.length} página(s)`);
         
@@ -68,8 +67,8 @@ export default function TiffProcessorComponent() {
           return canvas;
         });
         
-        // Convert to TIFF (single or multi-page)
-        const processedBlob = await TiffUtils.canvasesToTiff(processedCanvases, options.dpi);
+        // Create processed file
+        const processedBlob = await createTiffLikeFile(processedCanvases, options.dpi);
         const downloadUrl = URL.createObjectURL(processedBlob);
         console.log(`Archivo procesado exitosamente: ${processedCanvases.length} página(s)`);
         
@@ -105,17 +104,10 @@ export default function TiffProcessorComponent() {
 
   const handleDownload = (file: ProcessedFile) => {
     if (file.downloadUrl) {
-      if (file.processedName.endsWith('.tiff')) {
-        fetch(file.downloadUrl)
-          .then(response => response.blob())
-          .then(blob => TiffUtils.downloadTiff(blob, file.processedName))
-          .catch(error => console.error('Error downloading file:', error));
-      } else {
-        fetch(file.downloadUrl)
-          .then(response => response.blob())
-          .then(blob => downloadBlob(blob, file.processedName))
-          .catch(error => console.error('Error downloading file:', error));
-      }
+      fetch(file.downloadUrl)
+        .then(response => response.blob())
+        .then(blob => downloadBlob(blob, file.processedName))
+        .catch(error => console.error('Error downloading file:', error));
     }
   };
 

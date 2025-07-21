@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
-import { loadPDFAsImages, createMultiPageTiff } from '../utils/pdfProcessor';
-import { convertToGrayscale, canvasToBlob, downloadBlob } from '../utils/imageProcessor';
-import { TiffProcessor as TiffUtils } from '../utils/tiffProcessor';
+import { loadPDFAsImages, combineCanvasesToSingleImage } from '../utils/pdfProcessor';
+import { convertToGrayscale, createTiffLikeFile, downloadBlob } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function PdfConverter() {
@@ -77,7 +76,8 @@ export default function PdfConverter() {
         }
         
         // Combine all canvases into one image
-        const combinedBlob = await createMultiPageTiff(allCanvases, options.dpi);
+        const combinedCanvas = combineCanvasesToSingleImage(allCanvases);
+        const combinedBlob = await createTiffLikeFile([combinedCanvas], options.dpi);
         const downloadUrl = URL.createObjectURL(combinedBlob);
         console.log('Archivos combinados exitosamente');
         
@@ -107,8 +107,7 @@ export default function PdfConverter() {
             }
             
             // Convert to image
-            let finalBlob: Blob;
-            finalBlob = await TiffUtils.canvasesToTiff(canvases, options.dpi);
+            const finalBlob = await createTiffLikeFile(canvases, options.dpi);
             
             const downloadUrl = URL.createObjectURL(finalBlob);
             console.log(`PDF procesado exitosamente: ${file.name}`);
@@ -152,17 +151,10 @@ export default function PdfConverter() {
 
   const handleDownload = (file: ProcessedFile) => {
     if (file.downloadUrl) {
-      if (file.processedName.endsWith('.tiff')) {
-        fetch(file.downloadUrl)
-          .then(response => response.blob())
-          .then(blob => TiffUtils.downloadTiff(blob, file.processedName))
-          .catch(error => console.error('Error downloading file:', error));
-      } else {
-        fetch(file.downloadUrl)
-          .then(response => response.blob())
-          .then(blob => downloadBlob(blob, file.processedName))
-          .catch(error => console.error('Error downloading file:', error));
-      }
+      fetch(file.downloadUrl)
+        .then(response => response.blob())
+        .then(blob => downloadBlob(blob, file.processedName))
+        .catch(error => console.error('Error downloading file:', error));
     }
   };
 
