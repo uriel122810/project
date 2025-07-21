@@ -3,6 +3,7 @@ import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
 import { loadImageToCanvas, convertToGrayscale, resizeCanvas, canvasToBlob, downloadBlob } from '../utils/imageProcessor';
+import { TiffProcessor } from '../utils/tiffProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function TiffProcessor() {
@@ -30,7 +31,7 @@ export default function TiffProcessor() {
     const newProcessedFiles: ProcessedFile[] = selectedFiles.map(file => ({
       id: crypto.randomUUID(),
       originalName: file.name,
-      processedName: `processed_${file.name.replace(/\.(tiff?|png|jpe?g)$/i, '.png')}`,
+      processedName: `processed_${file.name.replace(/\.(tiff?|png|jpe?g)$/i, '.tiff')}`,
       type: 'tiff',
       status: 'processing',
       size: file.size
@@ -61,7 +62,7 @@ export default function TiffProcessor() {
         }
         
         // Convert to blob
-        const processedBlob = await canvasToBlob(canvas, options.quality, 'image/png');
+        const processedBlob = await TiffProcessor.canvasToTiff(canvas, options.dpi);
         const downloadUrl = URL.createObjectURL(processedBlob);
         console.log('Archivo procesado exitosamente');
         
@@ -97,17 +98,26 @@ export default function TiffProcessor() {
 
   const handleDownload = (file: ProcessedFile) => {
     if (file.downloadUrl) {
-      fetch(file.downloadUrl)
-        .then(response => response.blob())
-        .then(blob => downloadBlob(blob, file.processedName))
-        .catch(error => console.error('Error downloading file:', error));
+      if (file.processedName.endsWith('.tiff')) {
+        fetch(file.downloadUrl)
+          .then(response => response.blob())
+          .then(blob => TiffProcessor.downloadTiff(blob, file.processedName))
+          .catch(error => console.error('Error downloading file:', error));
+      } else {
+        fetch(file.downloadUrl)
+          .then(response => response.blob())
+          .then(blob => downloadBlob(blob, file.processedName))
+          .catch(error => console.error('Error downloading file:', error));
+      }
     }
   };
 
   const handleDownloadAll = () => {
     processedFiles
       .filter(file => file.status === 'completed' && file.downloadUrl)
-      .forEach(file => handleDownload(file));
+      .forEach(file => {
+        setTimeout(() => handleDownload(file), 100); // Small delay between downloads
+      });
   };
 
   return (

@@ -1,4 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import { TiffProcessor } from './tiffProcessor';
 
 // Configure PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
@@ -73,18 +74,11 @@ export const combineCanvasesToSingleImage = (canvases: HTMLCanvasElement[]): HTM
   return combinedCanvas;
 };
 
-export const createMultiPageTiff = async (canvases: HTMLCanvasElement[]): Promise<Blob> => {
-  // For now, we'll combine all pages into a single image
-  // True multi-page TIFF would require a specialized library
-  const combinedCanvas = combineCanvasesToSingleImage(canvases);
-  
-  return new Promise((resolve, reject) => {
-    combinedCanvas.toBlob((blob) => {
-      if (blob) {
-        resolve(blob);
-      } else {
-        reject(new Error('Error al crear el archivo TIFF'));
-      }
-    }, 'image/png', 0.95); // Using PNG as TIFF support is limited in browsers
-  });
+export const createMultiPageTiff = async (canvases: HTMLCanvasElement[], dpi: number = 300): Promise<Blob> => {
+  try {
+    return await TiffProcessor.canvasesToTiff(canvases, dpi);
+  } catch (error) {
+    console.error('Error creating multi-page TIFF:', error);
+    throw new Error('Error al crear el archivo TIFF multipágina');
+  }
 };

@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
-import { loadPDFAsImages, combineCanvasesToSingleImage, createMultiPageTiff } from '../utils/pdfProcessor';
+import { loadPDFAsImages, createMultiPageTiff } from '../utils/pdfProcessor';
 import { convertToGrayscale, canvasToBlob, downloadBlob } from '../utils/imageProcessor';
+import { TiffProcessor } from '../utils/tiffProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function PdfConverter() {
@@ -37,7 +38,7 @@ export default function PdfConverter() {
       newProcessedFiles = [{
         id: crypto.randomUUID(),
         originalName: `${selectedFiles.length}_archivos_combinados.pdf`,
-        processedName: `combined_${selectedFiles.length}_files.png`,
+        processedName: `combined_${selectedFiles.length}_files.tiff`,
         type: 'pdf',
         status: 'processing',
         size: selectedFiles.reduce((sum, file) => sum + file.size, 0)
@@ -47,7 +48,7 @@ export default function PdfConverter() {
       newProcessedFiles = selectedFiles.map(file => ({
         id: crypto.randomUUID(),
         originalName: file.name,
-        processedName: file.name.replace('.pdf', '.png'),
+        processedName: file.name.replace('.pdf', '.tiff'),
         type: 'pdf',
         status: 'processing',
         size: file.size
@@ -76,8 +77,7 @@ export default function PdfConverter() {
         }
         
         // Combine all canvases into one image
-        const combinedCanvas = combineCanvasesToSingleImage(allCanvases);
-        const combinedBlob = await canvasToBlob(combinedCanvas, options.quality, 'image/png');
+        const combinedBlob = await createMultiPageTiff(allCanvases, options.dpi);
         const downloadUrl = URL.createObjectURL(combinedBlob);
         console.log('Archivos combinados exitosamente');
         
@@ -108,12 +108,7 @@ export default function PdfConverter() {
             
             // Convert to image
             let finalBlob: Blob;
-            if (canvases.length === 1) {
-              finalBlob = await canvasToBlob(canvases[0], options.quality, 'image/png');
-            } else {
-              const combinedCanvas = combineCanvasesToSingleImage(canvases);
-              finalBlob = await canvasToBlob(combinedCanvas, options.quality, 'image/png');
-            }
+            finalBlob = await TiffProcessor.canvasesToTiff(canvases, options.dpi);
             
             const downloadUrl = URL.createObjectURL(finalBlob);
             console.log(`PDF procesado exitosamente: ${file.name}`);
@@ -157,17 +152,26 @@ export default function PdfConverter() {
 
   const handleDownload = (file: ProcessedFile) => {
     if (file.downloadUrl) {
-      fetch(file.downloadUrl)
-        .then(response => response.blob())
-        .then(blob => downloadBlob(blob, file.processedName))
-        .catch(error => console.error('Error downloading file:', error));
+      if (file.processedName.endsWith('.tiff')) {
+        fetch(file.downloadUrl)
+          .then(response => response.blob())
+          .then(blob => TiffProcessor.downloadTiff(blob, file.processedName))
+          .catch(error => console.error('Error downloading file:', error));
+      } else {
+        fetch(file.downloadUrl)
+          .then(response => response.blob())
+          .then(blob => downloadBlob(blob, file.processedName))
+          .catch(error => console.error('Error downloading file:', error));
+      }
     }
   };
 
   const handleDownloadAll = () => {
     processedFiles
       .filter(file => file.status === 'completed' && file.downloadUrl)
-      .forEach(file => handleDownload(file));
+      .forEach(file => {
+        setTimeout(() => handleDownload(file), 100); // Small delay between downloads
+      });
   };
 
   return (
