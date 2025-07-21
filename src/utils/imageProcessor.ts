@@ -27,8 +27,8 @@ export const resizeCanvas = (canvas: HTMLCanvasElement, targetDPI: number): HTML
   const ctx = newCanvas.getContext('2d');
   if (!ctx) throw new Error('No se pudo crear el nuevo canvas');
 
-  newCanvas.width = canvas.width * scale;
-  newCanvas.height = canvas.height * scale;
+  newCanvas.width = Math.round(canvas.width * scale);
+  newCanvas.height = Math.round(canvas.height * scale);
 
   // Use high-quality scaling
   ctx.imageSmoothingEnabled = true;
@@ -52,14 +52,20 @@ export const loadImageToCanvas = (file: File): Promise<HTMLCanvasElement> => {
       canvas.width = img.width;
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
+      
+      // Clean up
+      URL.revokeObjectURL(img.src);
       resolve(canvas);
     };
-    img.onerror = () => reject(new Error('Error al cargar la imagen'));
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error('Error al cargar la imagen'));
+    };
     img.src = URL.createObjectURL(file);
   });
 };
 
-export const canvasToBlob = (canvas: HTMLCanvasElement, quality: string): Promise<Blob> => {
+export const canvasToBlob = (canvas: HTMLCanvasElement, quality: string, format: string = 'image/png'): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const qualityValue = quality === 'high' ? 0.95 : quality === 'medium' ? 0.8 : 0.6;
     canvas.toBlob((blob) => {
@@ -68,6 +74,17 @@ export const canvasToBlob = (canvas: HTMLCanvasElement, quality: string): Promis
       } else {
         reject(new Error('Error al convertir canvas a blob'));
       }
-    }, 'image/tiff', qualityValue);
+    }, format, qualityValue);
   });
+};
+
+export const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };

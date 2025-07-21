@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
-import { loadPDFAsImages, combineCanvasesToTiff } from '../utils/pdfProcessor';
-import { convertToGrayscale } from '../utils/imageProcessor';
+import { loadPDFAsImages, combineCanvasesToSingleImage, createMultiPageTiff } from '../utils/pdfProcessor';
+import { convertToGrayscale, canvasToBlob, downloadBlob } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function PdfConverter() {
@@ -37,7 +37,7 @@ export default function PdfConverter() {
       newProcessedFiles = [{
         id: crypto.randomUUID(),
         originalName: `${selectedFiles.length}_archivos_combinados.pdf`,
-        processedName: `combined_${selectedFiles.length}_files.tiff`,
+        processedName: `combined_${selectedFiles.length}_files.png`,
         type: 'pdf',
         status: 'processing',
         size: selectedFiles.reduce((sum, file) => sum + file.size, 0)
@@ -47,7 +47,7 @@ export default function PdfConverter() {
       newProcessedFiles = selectedFiles.map(file => ({
         id: crypto.randomUUID(),
         originalName: file.name,
-        processedName: file.name.replace('.pdf', '.tiff'),
+        processedName: file.name.replace('.pdf', '.png'),
         type: 'pdf',
         status: 'processing',
         size: file.size
@@ -58,22 +58,28 @@ export default function PdfConverter() {
 
     try {
       if (combineFiles && selectedFiles.length > 1) {
-        // Process combined files
+        console.log(`Combinando ${selectedFiles.length} archivos PDF`);
         const allCanvases: HTMLCanvasElement[] = [];
         
         for (const file of selectedFiles) {
-          const canvases = await loadPDFAsImages(file);
+          console.log(`Procesando PDF: ${file.name}`);
+          const canvases = await loadPDFAsImages(file, options.dpi);
           allCanvases.push(...canvases);
         }
+        
+        console.log(`Total de páginas: ${allCanvases.length}`);
         
         // Apply grayscale if enabled
         if (options.grayscale) {
           allCanvases.forEach(canvas => convertToGrayscale(canvas));
+          console.log('Conversión a escala de grises aplicada');
         }
         
-        // Combine all canvases into one TIFF
-        const combinedBlob = await combineCanvasesToTiff(allCanvases, options.dpi);
+        // Combine all canvases into one image
+        const combinedCanvas = combineCanvasesToSingleImage(allCanvases);
+        const combinedBlob = await canvasToBlob(combinedCanvas, options.quality, 'image/png');
         const downloadUrl = URL.createObjectURL(combinedBlob);
+        console.log('Archivos combinados exitosamente');
         
         setProcessedFiles(prev => 
           prev.map(file => 
@@ -91,16 +97,26 @@ export default function PdfConverter() {
         for (let i = 0; i < selectedFiles.length; i++) {
           try {
             const file = selectedFiles[i];
-            const canvases = await loadPDFAsImages(file);
+            console.log(`Procesando PDF individual: ${file.name}`);
+            const canvases = await loadPDFAsImages(file, options.dpi);
             
             // Apply grayscale if enabled
             if (options.grayscale) {
               canvases.forEach(canvas => convertToGrayscale(canvas));
+              console.log('Conversión a escala de grises aplicada');
             }
             
-            // Convert to TIFF
-            const tiffBlob = await combineCanvasesToTiff(canvases, options.dpi);
-            const downloadUrl = URL.createObjectURL(tiffBlob);
+            // Convert to image
+            let finalBlob: Blob;
+            if (canvases.length === 1) {
+              finalBlob = await canvasToBlob(canvases[0], options.quality, 'image/png');
+            } else {
+              const combinedCanvas = combineCanvasesToSingleImage(canvases);
+              finalBlob = await canvasToBlob(combinedCanvas, options.quality, 'image/png');
+            }
+            
+            const downloadUrl = URL.createObjectURL(finalBlob);
+            console.log(`PDF procesado exitosamente: ${file.name}`);
             
             setProcessedFiles(prev => 
               prev.map(processedFile => 
@@ -141,12 +157,10 @@ export default function PdfConverter() {
 
   const handleDownload = (file: ProcessedFile) => {
     if (file.downloadUrl) {
-      const link = document.createElement('a');
-      link.href = file.downloadUrl;
-      link.download = file.processedName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      fetch(file.downloadUrl)
+        .then(response => response.blob())
+        .then(blob => downloadBlob(blob, file.processedName))
+        .catch(error => console.error('Error downloading file:', error));
     }
   };
 

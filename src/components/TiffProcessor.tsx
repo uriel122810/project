@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
-import { loadImageToCanvas, convertToGrayscale, resizeCanvas, canvasToBlob } from '../utils/imageProcessor';
+import { loadImageToCanvas, convertToGrayscale, resizeCanvas, canvasToBlob, downloadBlob } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function TiffProcessor() {
@@ -30,7 +30,7 @@ export default function TiffProcessor() {
     const newProcessedFiles: ProcessedFile[] = selectedFiles.map(file => ({
       id: crypto.randomUUID(),
       originalName: file.name,
-      processedName: `processed_${file.name}`,
+      processedName: `processed_${file.name.replace(/\.(tiff?|png|jpe?g)$/i, '.png')}`,
       type: 'tiff',
       status: 'processing',
       size: file.size
@@ -38,27 +38,32 @@ export default function TiffProcessor() {
 
     setProcessedFiles(newProcessedFiles);
 
-    // Real processing
+    // Process each file
     for (let i = 0; i < selectedFiles.length; i++) {
       try {
         const file = selectedFiles[i];
+        console.log(`Procesando archivo: ${file.name}`);
         
         // Load image to canvas
         let canvas = await loadImageToCanvas(file);
+        console.log(`Imagen cargada: ${canvas.width}x${canvas.height}`);
         
         // Apply grayscale conversion if enabled
         if (options.grayscale) {
           canvas = convertToGrayscale(canvas);
+          console.log('Conversión a escala de grises aplicada');
         }
         
         // Resize based on DPI if needed
         if (options.dpi !== 96) {
           canvas = resizeCanvas(canvas, options.dpi);
+          console.log(`Redimensionado a ${options.dpi} DPI: ${canvas.width}x${canvas.height}`);
         }
         
         // Convert to blob
-        const processedBlob = await canvasToBlob(canvas, options.quality);
+        const processedBlob = await canvasToBlob(canvas, options.quality, 'image/png');
         const downloadUrl = URL.createObjectURL(processedBlob);
+        console.log('Archivo procesado exitosamente');
         
         setProcessedFiles(prev => 
           prev.map(processedFile => 
@@ -92,12 +97,10 @@ export default function TiffProcessor() {
 
   const handleDownload = (file: ProcessedFile) => {
     if (file.downloadUrl) {
-      const link = document.createElement('a');
-      link.href = file.downloadUrl;
-      link.download = file.processedName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      fetch(file.downloadUrl)
+        .then(response => response.blob())
+        .then(blob => downloadBlob(blob, file.processedName))
+        .catch(error => console.error('Error downloading file:', error));
     }
   };
 

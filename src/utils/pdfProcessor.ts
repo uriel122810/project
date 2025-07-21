@@ -1,64 +1,55 @@
-// PDF processing utilities
-export const loadPDFAsImages = async (file: File): Promise<HTMLCanvasElement[]> => {
-  return new Promise((resolve, reject) => {
-    const fileReader = new FileReader();
-    fileReader.onload = async (e) => {
-      try {
-        const typedArray = new Uint8Array(e.target?.result as ArrayBuffer);
-        
-        // For demo purposes, we'll create a canvas representation
-        // In a real implementation, you'd use PDF.js or similar library
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('No se pudo crear el canvas');
+import * as pdfjsLib from 'pdfjs-dist';
 
-        // Create a placeholder representation of the PDF
-        canvas.width = 800;
-        canvas.height = 1000;
-        
-        // Fill with white background
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Add some text to simulate PDF content
-        ctx.fillStyle = 'black';
-        ctx.font = '16px Arial';
-        ctx.fillText(`Contenido del PDF: ${file.name}`, 50, 100);
-        ctx.fillText('Esta es una representación simulada', 50, 130);
-        ctx.fillText('del contenido del archivo PDF', 50, 160);
-        
-        // Add a border
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
 
-        resolve([canvas]);
-      } catch (error) {
-        reject(error);
-      }
-    };
-    fileReader.onerror = () => reject(new Error('Error al leer el archivo PDF'));
-    fileReader.readAsArrayBuffer(file);
-  });
+export const loadPDFAsImages = async (file: File, dpi: number = 150): Promise<HTMLCanvasElement[]> => {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const canvases: HTMLCanvasElement[] = [];
+    
+    const scale = dpi / 72; // PDF default is 72 DPI
+    
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale });
+      
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No se pudo crear el contexto del canvas');
+      
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      
+      const renderContext = {
+        canvasContext: ctx,
+        viewport: viewport
+      };
+      
+      await page.render(renderContext).promise;
+      canvases.push(canvas);
+    }
+    
+    return canvases;
+  } catch (error) {
+    console.error('Error loading PDF:', error);
+    throw new Error(`Error al procesar el PDF: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+  }
 };
 
-export const combineCanvasesToTiff = async (canvases: HTMLCanvasElement[], dpi: number): Promise<Blob> => {
+export const combineCanvasesToSingleImage = (canvases: HTMLCanvasElement[]): HTMLCanvasElement => {
   if (canvases.length === 0) throw new Error('No hay imágenes para combinar');
   
   if (canvases.length === 1) {
-    // Single canvas, just convert to TIFF
-    return new Promise((resolve, reject) => {
-      canvases[0].toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error('Error al convertir a TIFF'));
-      }, 'image/tiff');
-    });
+    return canvases[0];
   }
 
-  // Multiple canvases - combine vertically
-  const totalHeight = canvases.reduce((sum, canvas) => sum + canvas.height, 0);
+  // Calculate total dimensions
   const maxWidth = Math.max(...canvases.map(canvas => canvas.width));
+  const totalHeight = canvases.reduce((sum, canvas) => sum + canvas.height, 0);
   
+  // Create combined canvas
   const combinedCanvas = document.createElement('canvas');
   const ctx = combinedCanvas.getContext('2d');
   if (!ctx) throw new Error('No se pudo crear el canvas combinado');
@@ -73,14 +64,27 @@ export const combineCanvasesToTiff = async (canvases: HTMLCanvasElement[], dpi: 
   // Draw each canvas
   let currentY = 0;
   for (const canvas of canvases) {
-    ctx.drawImage(canvas, 0, currentY);
+    // Center the canvas horizontally if it's smaller than maxWidth
+    const x = (maxWidth - canvas.width) / 2;
+    ctx.drawImage(canvas, x, currentY);
     currentY += canvas.height;
   }
 
+  return combinedCanvas;
+};
+
+export const createMultiPageTiff = async (canvases: HTMLCanvasElement[]): Promise<Blob> => {
+  // For now, we'll combine all pages into a single image
+  // True multi-page TIFF would require a specialized library
+  const combinedCanvas = combineCanvasesToSingleImage(canvases);
+  
   return new Promise((resolve, reject) => {
     combinedCanvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('Error al combinar archivos'));
-    }, 'image/tiff');
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error('Error al crear el archivo TIFF'));
+      }
+    }, 'image/png', 0.95); // Using PNG as TIFF support is limited in browsers
   });
 };
