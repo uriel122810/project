@@ -59,7 +59,7 @@ export default function FileUpload({
           Arrastra archivos aquí o haz clic para seleccionar
         </p>
         <p className="text-sm text-gray-500 mb-4">
-          Tipos admitidos: {acceptedTypes.join(', ')}
+          Tipos admitidos: {acceptedTypes.join(', ')} (incluyendo TIFF multipágina)
         </p>
         <input
           type="file"

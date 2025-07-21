@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
-import { loadImageToCanvas, convertToGrayscale, resizeCanvas, canvasToBlob, downloadBlob } from '../utils/imageProcessor';
+import { loadImageToCanvas, convertToGrayscale, resizeCanvas } from '../utils/imageProcessor';
 import { TiffProcessor as TiffUtils } from '../utils/tiffProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
@@ -45,26 +45,33 @@ export default function TiffProcessorComponent() {
         const file = selectedFiles[i];
         console.log(`Procesando archivo: ${file.name}`);
         
-        // Load image to canvas
-        let canvas = await loadImageToCanvas(file);
-        console.log(`Imagen cargada: ${canvas.width}x${canvas.height}`);
+        // Load image(s) to canvas - TIFF files may have multiple pages
+        const canvases = await loadImageToCanvas(file);
+        console.log(`Archivo cargado: ${canvases.length} página(s)`);
         
-        // Apply grayscale conversion if enabled
-        if (options.grayscale) {
-          canvas = convertToGrayscale(canvas);
-          console.log('Conversión a escala de grises aplicada');
-        }
+        // Process each canvas
+        const processedCanvases = canvases.map((canvas, pageIndex) => {
+          console.log(`Procesando página ${pageIndex + 1}: ${canvas.width}x${canvas.height}`);
+          
+          // Apply grayscale conversion if enabled
+          if (options.grayscale) {
+            canvas = convertToGrayscale(canvas);
+            console.log(`Página ${pageIndex + 1}: Conversión a escala de grises aplicada`);
+          }
+          
+          // Resize based on DPI if needed
+          if (options.dpi !== 96) {
+            canvas = resizeCanvas(canvas, options.dpi);
+            console.log(`Página ${pageIndex + 1}: Redimensionado a ${options.dpi} DPI: ${canvas.width}x${canvas.height}`);
+          }
+          
+          return canvas;
+        });
         
-        // Resize based on DPI if needed
-        if (options.dpi !== 96) {
-          canvas = resizeCanvas(canvas, options.dpi);
-          console.log(`Redimensionado a ${options.dpi} DPI: ${canvas.width}x${canvas.height}`);
-        }
-        
-        // Convert to blob
-        const processedBlob = await TiffUtils.canvasToTiff(canvas, options.dpi);
+        // Convert to TIFF (single or multi-page)
+        const processedBlob = await TiffUtils.canvasesToTiff(processedCanvases, options.dpi);
         const downloadUrl = URL.createObjectURL(processedBlob);
-        console.log('Archivo procesado exitosamente');
+        console.log(`Archivo procesado exitosamente: ${processedCanvases.length} página(s)`);
         
         setProcessedFiles(prev => 
           prev.map(processedFile => 
@@ -78,7 +85,7 @@ export default function TiffProcessorComponent() {
           )
         );
       } catch (error) {
-        console.error('Error processing file:', error);
+        console.error(`Error procesando archivo ${selectedFiles[i].name}:`, error);
         setProcessedFiles(prev => 
           prev.map(processedFile => 
             processedFile.id === newProcessedFiles[i].id
