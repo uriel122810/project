@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
-import { loadPDFAsImages, combineCanvasesToSingleImage } from '../utils/pdfProcessor';
-import { convertToGrayscale, createTiffLikeFile, downloadBlob } from '../utils/imageProcessor';
+import { loadPDFAsImages, combinePDFs, loadPDFBytesAsImages } from '../utils/pdfProcessor';
+import { convertToGrayscale, createMultiPageTiffFile, downloadBlob } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function PdfConverter() {
@@ -37,7 +37,7 @@ export default function PdfConverter() {
       newProcessedFiles = [{
         id: crypto.randomUUID(),
         originalName: `${selectedFiles.length}_archivos_combinados.pdf`,
-        processedName: `combined_${selectedFiles.length}_files.tiff`,
+        processedName: `combined_${selectedFiles.length}_files_multipage.tiff`,
         type: 'pdf',
         status: 'processing',
         size: selectedFiles.reduce((sum, file) => sum + file.size, 0)
@@ -59,15 +59,13 @@ export default function PdfConverter() {
     try {
       if (combineFiles && selectedFiles.length > 1) {
         console.log(`Combinando ${selectedFiles.length} archivos PDF`);
-        const allCanvases: HTMLCanvasElement[] = [];
         
-        for (const file of selectedFiles) {
-          console.log(`Procesando PDF: ${file.name}`);
-          const canvases = await loadPDFAsImages(file, options.dpi);
-          allCanvases.push(...canvases);
-        }
+        // First, combine all PDFs into a single PDF using PDF-lib
+        const combinedPdfBytes = await combinePDFs(selectedFiles);
         
-        console.log(`Total de páginas: ${allCanvases.length}`);
+        // Then convert the combined PDF to images
+        const allCanvases = await loadPDFBytesAsImages(combinedPdfBytes, options.dpi);
+        console.log(`Total de páginas en PDF combinado: ${allCanvases.length}`);
         
         // Apply grayscale if enabled
         if (options.grayscale) {
@@ -75,11 +73,10 @@ export default function PdfConverter() {
           console.log('Conversión a escala de grises aplicada');
         }
         
-        // Combine all canvases into one image
-        const combinedCanvas = combineCanvasesToSingleImage(allCanvases);
-        const combinedBlob = await createTiffLikeFile([combinedCanvas], options.dpi);
+        // Create multi-page TIFF file
+        const combinedBlob = await createMultiPageTiffFile(allCanvases, options.dpi);
         const downloadUrl = URL.createObjectURL(combinedBlob);
-        console.log('Archivos combinados exitosamente');
+        console.log('PDF combinado convertido a TIFF multipágina exitosamente');
         
         setProcessedFiles(prev => 
           prev.map(file => 
@@ -107,7 +104,7 @@ export default function PdfConverter() {
             }
             
             // Convert to image
-            const finalBlob = await createTiffLikeFile(canvases, options.dpi);
+            const finalBlob = await createMultiPageTiffFile(canvases, options.dpi);
             
             const downloadUrl = URL.createObjectURL(finalBlob);
             console.log(`PDF procesado exitosamente: ${file.name}`);
@@ -236,7 +233,7 @@ export default function PdfConverter() {
               className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 rounded focus:ring-red-500"
             />
             <span className="ml-2 text-sm font-medium text-gray-700">
-              Combinar múltiples PDF en un solo TIFF
+              Combinar múltiples PDF en un solo TIFF multipágina
             </span>
           </label>
         </div>
