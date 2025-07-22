@@ -12,12 +12,16 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "build-electron": "npm run build && electron-builder",
-    "dist": "npm run build && electron-builder --publish=never"
+    "build-electron": "npm run build && electron-builder --win",
+    "dist": "npm run build && electron-builder --win --publish=never",
+    "pack": "npm run build && electron-builder --win --dir"
   },
   "build": {
     "appId": "com.municipio.procesador-imagenes",
     "productName": "Procesador de Imágenes - Municipio La PAZ",
+    "directories": {
+      "output": "dist-electron"
+    },
     "directories": {
       "output": "dist-electron"
     },
@@ -29,11 +33,14 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "public/icon.ico"
+      "icon": "public/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   },
   "dependencies": {
