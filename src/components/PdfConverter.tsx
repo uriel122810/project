@@ -3,7 +3,7 @@ import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
 import { loadPDFAsImages, combinePDFs, loadPDFBytesAsImages } from '../utils/pdfProcessor';
-import { convertToGrayscale, createTiffLikeFile, downloadBlob } from '../utils/imageProcessor';
+import { convertToGrayscale, createRealTiffFile, downloadBlob } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function PdfConverter() {
@@ -74,7 +74,7 @@ export default function PdfConverter() {
         }
         
         // Create multi-page TIFF file
-        const combinedBlob = await createTiffLikeFile(allCanvases, options.dpi);
+        const combinedBlob = await createRealTiffFile(allCanvases, options.dpi);
         const downloadUrl = URL.createObjectURL(combinedBlob);
         console.log('PDF combinado convertido a TIFF multipágina exitosamente');
         
@@ -104,7 +104,7 @@ export default function PdfConverter() {
             }
             
             // Convert to image
-            const finalBlob = await createTiffLikeFile(canvases, options.dpi);
+            const finalBlob = await createRealTiffFile(canvases, options.dpi);
             
             const downloadUrl = URL.createObjectURL(finalBlob);
             console.log(`PDF procesado exitosamente: ${file.name}`);

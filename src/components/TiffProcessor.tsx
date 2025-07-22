@@ -3,6 +3,7 @@ import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
 import { loadImageToCanvas, convertToGrayscale, resizeCanvas, createTiffLikeFile, downloadBlob } from '../utils/imageProcessor';
+import { createRealTiffFile } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function TiffProcessorComponent() {
@@ -68,7 +69,7 @@ export default function TiffProcessorComponent() {
         });
         
         // Create processed file
-        const processedBlob = await createTiffLikeFile(processedCanvases, options.dpi);
+        const processedBlob = await createRealTiffFile(processedCanvases, options.dpi);
         const downloadUrl = URL.createObjectURL(processedBlob);
         console.log(`Archivo procesado exitosamente: ${processedCanvases.length} página(s)`);
         

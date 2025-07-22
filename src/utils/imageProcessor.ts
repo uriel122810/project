@@ -1,4 +1,5 @@
 import { TiffGenerator } from './tiffGenerator';
+import { TiffCreator } from './tiffCreator';
 
 // Utility functions for image processing without external dependencies
 export const convertToGrayscale = (canvas: HTMLCanvasElement): HTMLCanvasElement => {
@@ -187,5 +188,25 @@ export const createTiffLikeFile = async (canvases: HTMLCanvasElement[], dpi: num
 
 // Create a multi-page file
 export const createMultiPageTiffFile = async (canvases: HTMLCanvasElement[], dpi: number = 300): Promise<Blob> => {
-  return createTiffLikeFile(canvases, dpi);
+  try {
+    console.log(`Creando TIFF multipágina real con ${canvases.length} páginas`);
+    const tiffData = TiffCreator.createMultiPageTiff(canvases, dpi);
+    return new Blob([tiffData], { type: 'image/tiff' });
+  } catch (error) {
+    console.error('Error creando TIFF multipágina:', error);
+    throw new Error(`Error al crear TIFF multipágina: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+  }
+};
+
+// Create real TIFF file
+export const createRealTiffFile = async (canvases: HTMLCanvasElement[], dpi: number = 300): Promise<Blob> => {
+  try {
+    console.log(`Creando archivo TIFF real con ${canvases.length} página(s) a ${dpi} DPI`);
+    const tiffData = TiffCreator.createMultiPageTiff(canvases, dpi);
+    console.log(`TIFF creado exitosamente: ${tiffData.length} bytes`);
+    return new Blob([tiffData], { type: 'image/tiff' });
+  } catch (error) {
+    console.error('Error creando TIFF real:', error);
+    throw new Error(`Error al crear archivo TIFF: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+  }
 };
