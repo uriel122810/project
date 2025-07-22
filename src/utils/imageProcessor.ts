@@ -1,3 +1,5 @@
+import { TiffGenerator } from './tiffGenerator';
+
 // Utility functions for image processing without external dependencies
 export const convertToGrayscale = (canvas: HTMLCanvasElement): HTMLCanvasElement => {
   const ctx = canvas.getContext('2d');
@@ -122,8 +124,33 @@ export const downloadBlob = (blob: Blob, filename: string) => {
 
 // Simple TIFF-like format using PNG with metadata
 export const createTiffLikeFile = async (canvases: HTMLCanvasElement[], dpi: number = 300): Promise<Blob> => {
+  try {
+    console.log(`Creando archivo TIFF con ${canvases.length} página(s) a ${dpi} DPI`);
+    
+    // Create real TIFF file
+    const tiffData = TiffGenerator.createMultiPageTiff(canvases, dpi);
+    const blob = new Blob([tiffData], { type: 'image/tiff' });
+    
+    console.log(`Archivo TIFF creado exitosamente: ${tiffData.length} bytes`);
+    return blob;
+  } catch (error) {
+    console.error('Error creando archivo TIFF:', error);
+    // Fallback to PNG if TIFF creation fails
+    console.log('Usando PNG como respaldo');
+    return createPngFallback(canvases);
+  }
+};
+
+// Create a multi-page TIFF-like file using individual pages
+export const createMultiPageTiffFile = async (canvases: HTMLCanvasElement[], dpi: number = 300): Promise<Blob> => {
+  return createTiffLikeFile(canvases, dpi);
+};
+
+// Fallback function to create PNG if TIFF fails
+const createPngFallback = async (canvases: HTMLCanvasElement[]): Promise<Blob> => {
+  console.log('Creando archivo PNG como respaldo');
+  
   if (canvases.length === 1) {
-    // Single page - return as high quality PNG
     return canvasToBlob(canvases[0], 'high', 'image/png');
   }
   
@@ -145,53 +172,10 @@ export const createTiffLikeFile = async (canvases: HTMLCanvasElement[], dpi: num
   // Draw each canvas
   let currentY = 0;
   for (const canvas of canvases) {
-    const x = (maxWidth - canvas.width) / 2; // Center horizontally
+    const x = (maxWidth - canvas.width) / 2;
     ctx.drawImage(canvas, x, currentY);
     currentY += canvas.height;
   }
 
-  return canvasToBlob(combinedCanvas, 'high', 'image/png');
-};
-
-// Create a multi-page TIFF-like file using individual pages
-export const createMultiPageTiffFile = async (canvases: HTMLCanvasElement[], dpi: number = 300): Promise<Blob> => {
-  console.log(`Creando archivo TIFF multipágina con ${canvases.length} páginas`);
-  
-  // For now, we'll create a single tall image that contains all pages
-  // This simulates a multi-page TIFF by stacking all pages vertically
-  const maxWidth = Math.max(...canvases.map(canvas => canvas.width));
-  const totalHeight = canvases.reduce((sum, canvas) => sum + canvas.height, 0);
-  
-  const combinedCanvas = document.createElement('canvas');
-  const ctx = combinedCanvas.getContext('2d');
-  if (!ctx) throw new Error('No se pudo crear el canvas combinado');
-
-  combinedCanvas.width = maxWidth;
-  combinedCanvas.height = totalHeight;
-
-  // Fill with white background
-  ctx.fillStyle = 'white';
-  ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
-
-  // Draw each page with a small separator
-  let currentY = 0;
-  for (let i = 0; i < canvases.length; i++) {
-    const canvas = canvases[i];
-    const x = (maxWidth - canvas.width) / 2; // Center horizontally
-    
-    // Add a thin separator line between pages (except for the first page)
-    if (i > 0) {
-      ctx.fillStyle = '#cccccc';
-      ctx.fillRect(0, currentY, maxWidth, 2);
-      currentY += 2;
-    }
-    
-    ctx.drawImage(canvas, x, currentY);
-    currentY += canvas.height;
-    
-    console.log(`Página ${i + 1} añadida en posición Y: ${currentY - canvas.height}`);
-  }
-
-  console.log(`Archivo TIFF multipágina creado: ${maxWidth}x${totalHeight}`);
   return canvasToBlob(combinedCanvas, 'high', 'image/png');
 };

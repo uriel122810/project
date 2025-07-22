@@ -74,7 +74,7 @@ export default function PdfConverter() {
         }
         
         // Create multi-page TIFF file
-        const combinedBlob = await createMultiPageTiffFile(allCanvases, options.dpi);
+        const combinedBlob = await createTiffLikeFile(allCanvases, options.dpi);
         const downloadUrl = URL.createObjectURL(combinedBlob);
         console.log('PDF combinado convertido a TIFF multipágina exitosamente');
         
@@ -104,7 +104,7 @@ export default function PdfConverter() {
             }
             
             // Convert to image
-            const finalBlob = await createMultiPageTiffFile(canvases, options.dpi);
+            const finalBlob = await createTiffLikeFile(canvases, options.dpi);
             
             const downloadUrl = URL.createObjectURL(finalBlob);
             console.log(`PDF procesado exitosamente: ${file.name}`);
