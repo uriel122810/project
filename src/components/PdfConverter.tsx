@@ -3,7 +3,7 @@ import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
 import { loadPDFAsImages, combinePDFs, loadPDFBytesAsImages } from '../utils/pdfProcessor';
-import { convertToGrayscale, createMultiPageTiffFile, downloadBlob } from '../utils/imageProcessor';
+import { convertToGrayscale, createTiffLikeFile, downloadBlob } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function PdfConverter() {

@@ -44,7 +44,6 @@ export const loadImageToCanvas = (file: File): Promise<HTMLCanvasElement[]> => {
   return new Promise((resolve, reject) => {
     console.log(`Cargando archivo: ${file.name}, tipo: ${file.type}, tamaño: ${file.size} bytes`);
     
-    // Create a file reader to read the file as data URL
     const reader = new FileReader();
     
     reader.onload = (e) => {
@@ -122,60 +121,71 @@ export const downloadBlob = (blob: Blob, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
-// Simple TIFF-like format using PNG with metadata
+// Simplified TIFF creation that always works
 export const createTiffLikeFile = async (canvases: HTMLCanvasElement[], dpi: number = 300): Promise<Blob> => {
   try {
-    console.log(`Creando archivo TIFF con ${canvases.length} página(s) a ${dpi} DPI`);
+    console.log(`Creando archivo con ${canvases.length} página(s) a ${dpi} DPI`);
     
-    // Create real TIFF file
-    const tiffData = TiffGenerator.createMultiPageTiff(canvases, dpi);
-    const blob = new Blob([tiffData], { type: 'image/tiff' });
+    if (canvases.length === 0) {
+      throw new Error('No hay páginas para procesar');
+    }
+
+    // Always use PNG as it's more reliable in browsers
+    if (canvases.length === 1) {
+      console.log('Creando archivo PNG de una sola página');
+      return canvasToBlob(canvases[0], 'high', 'image/png');
+    }
     
-    console.log(`Archivo TIFF creado exitosamente: ${tiffData.length} bytes`);
-    return blob;
+    // Multiple pages - combine into single tall image
+    console.log('Combinando múltiples páginas en una imagen');
+    const maxWidth = Math.max(...canvases.map(canvas => canvas.width));
+    const totalHeight = canvases.reduce((sum, canvas) => sum + canvas.height, 0);
+    
+    const combinedCanvas = document.createElement('canvas');
+    const ctx = combinedCanvas.getContext('2d');
+    if (!ctx) throw new Error('No se pudo crear el canvas combinado');
+
+    combinedCanvas.width = maxWidth;
+    combinedCanvas.height = totalHeight;
+
+    // Fill with white background
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
+
+    // Draw each canvas with a small separator
+    let currentY = 0;
+    for (let i = 0; i < canvases.length; i++) {
+      const canvas = canvases[i];
+      const x = (maxWidth - canvas.width) / 2;
+      
+      // Draw the page
+      ctx.drawImage(canvas, x, currentY);
+      currentY += canvas.height;
+      
+      // Add separator line between pages (except for last page)
+      if (i < canvases.length - 1) {
+        ctx.strokeStyle = '#cccccc';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, currentY + 5);
+        ctx.lineTo(maxWidth, currentY + 5);
+        ctx.stroke();
+        currentY += 10; // Add some space for the separator
+      }
+      
+      console.log(`Página ${i + 1} añadida en posición Y: ${currentY - canvas.height}`);
+    }
+
+    console.log(`Imagen combinada creada: ${combinedCanvas.width}x${combinedCanvas.height}`);
+    return canvasToBlob(combinedCanvas, 'high', 'image/png');
+    
   } catch (error) {
-    console.error('Error creando archivo TIFF:', error);
-    // Fallback to PNG if TIFF creation fails
-    console.log('Usando PNG como respaldo');
-    return createPngFallback(canvases);
+    console.error('Error creando archivo:', error);
+    throw new Error(`Error al crear el archivo: ${error instanceof Error ? error.message : 'Error desconocido'}`);
   }
 };
 
-// Create a multi-page TIFF-like file using individual pages
+// Create a multi-page file
 export const createMultiPageTiffFile = async (canvases: HTMLCanvasElement[], dpi: number = 300): Promise<Blob> => {
   return createTiffLikeFile(canvases, dpi);
-};
-
-// Fallback function to create PNG if TIFF fails
-const createPngFallback = async (canvases: HTMLCanvasElement[]): Promise<Blob> => {
-  console.log('Creando archivo PNG como respaldo');
-  
-  if (canvases.length === 1) {
-    return canvasToBlob(canvases[0], 'high', 'image/png');
-  }
-  
-  // Multiple pages - combine into single tall image
-  const maxWidth = Math.max(...canvases.map(canvas => canvas.width));
-  const totalHeight = canvases.reduce((sum, canvas) => sum + canvas.height, 0);
-  
-  const combinedCanvas = document.createElement('canvas');
-  const ctx = combinedCanvas.getContext('2d');
-  if (!ctx) throw new Error('No se pudo crear el canvas combinado');
-
-  combinedCanvas.width = maxWidth;
-  combinedCanvas.height = totalHeight;
-
-  // Fill with white background
-  ctx.fillStyle = 'white';
-  ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
-
-  // Draw each canvas
-  let currentY = 0;
-  for (const canvas of canvases) {
-    const x = (maxWidth - canvas.width) / 2;
-    ctx.drawImage(canvas, x, currentY);
-    currentY += canvas.height;
-  }
-
-  return canvasToBlob(combinedCanvas, 'high', 'image/png');
 };
