@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { Upload, File, X } from 'lucide-react';
+import { isElectron, selectPdfFiles, selectTiffFiles } from '../utils/electronProcessor';
 
 interface FileUploadProps {
   acceptedTypes: string[];
@@ -7,6 +8,7 @@ interface FileUploadProps {
   selectedFiles: File[];
   onRemoveFile: (index: number) => void;
   maxFiles?: number;
+  fileType?: 'pdf' | 'tiff';
 }
 
 export default function FileUpload({ 
@@ -14,8 +16,25 @@ export default function FileUpload({
   onFilesSelected, 
   selectedFiles, 
   onRemoveFile,
-  maxFiles = 10 
+  maxFiles = 10,
+  fileType = 'pdf'
 }: FileUploadProps) {
+  const handleElectronFileSelect = useCallback(async () => {
+    if (!isElectron()) return;
+    
+    try {
+      let files: File[];
+      if (fileType === 'pdf') {
+        files = await selectPdfFiles();
+      } else {
+        files = await selectTiffFiles();
+      }
+      onFilesSelected(files);
+    } catch (error) {
+      console.error('Error seleccionando archivos:', error);
+    }
+  }, [fileType, onFilesSelected]);
+
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     const validFiles = files.filter(file => 
@@ -68,14 +87,25 @@ export default function FileUpload({
           onChange={handleFileSelect}
           className="hidden"
           id="file-upload"
+          style={{ display: isElectron() ? 'none' : 'block' }}
         />
-        <label
-          htmlFor="file-upload"
-          className="inline-flex items-center px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200 cursor-pointer"
-        >
-          <Upload className="w-5 h-5 mr-2" />
-          Seleccionar Archivos
-        </label>
+        {isElectron() ? (
+          <button
+            onClick={handleElectronFileSelect}
+            className="inline-flex items-center px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200"
+          >
+            <Upload className="w-5 h-5 mr-2" />
+            Seleccionar Archivos
+          </button>
+        ) : (
+          <label
+            htmlFor="file-upload"
+            className="inline-flex items-center px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200 cursor-pointer"
+          >
+            <Upload className="w-5 h-5 mr-2" />
+            Seleccionar Archivos
+          </label>
+        )}
       </div>
 
       {selectedFiles.length > 0 && (

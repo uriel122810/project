@@ -4,6 +4,7 @@ import HomePage from './components/HomePage';
 import TiffProcessorComponent from './components/TiffProcessor';
 import PdfConverter from './components/PdfConverter';
 import HelpPage from './components/HelpPage';
+import { isElectron } from './utils/electronProcessor';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('inicio');
@@ -40,9 +41,16 @@ function App() {
         <div className="p-8">
           <div className="flex justify-between items-center mb-8">
             <div></div>
-            <h2 className="text-lg font-semibold text-gray-700">
-              Procesador de Imagenes Municipio La PAZ
-            </h2>
+            <div className="text-right">
+              <h2 className="text-lg font-semibold text-gray-700">
+                Procesador de Imagenes Municipio La PAZ
+              </h2>
+              {isElectron() && (
+                <p className="text-sm text-green-600 font-medium">
+                  Aplicación de Escritorio - Procesamiento Nativo
+                </p>
+              )}
+            </div>
           </div>
           
           {renderCurrentPage()}

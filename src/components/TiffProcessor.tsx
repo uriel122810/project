@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
+import { isElectron, processTiffFiles, saveFile } from '../utils/electronProcessor';
 import { loadImageToCanvas, convertToGrayscale, resizeCanvas, createTiffLikeFile, downloadBlob } from '../utils/imageProcessor';
 import { createRealTiffFile } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
@@ -39,64 +40,95 @@ export default function TiffProcessorComponent() {
 
     setProcessedFiles(newProcessedFiles);
 
-    // Process each file
-    for (let i = 0; i < selectedFiles.length; i++) {
-      try {
-        const file = selectedFiles[i];
-        console.log(`Procesando archivo: ${file.name}`);
-        
-        // Load image to canvas
-        const canvases = await loadImageToCanvas(file);
-        console.log(`Archivo cargado: ${canvases.length} página(s)`);
-        
-        // Process each canvas
-        const processedCanvases = canvases.map((canvas, pageIndex) => {
-          console.log(`Procesando página ${pageIndex + 1}: ${canvas.width}x${canvas.height}`);
-          
-          // Apply grayscale conversion if enabled
-          if (options.grayscale) {
-            canvas = convertToGrayscale(canvas);
-            console.log(`Página ${pageIndex + 1}: Conversión a escala de grises aplicada`);
-          }
-          
-          // Resize based on DPI if needed
-          if (options.dpi !== 96) {
-            canvas = resizeCanvas(canvas, options.dpi);
-            console.log(`Página ${pageIndex + 1}: Redimensionado a ${options.dpi} DPI: ${canvas.width}x${canvas.height}`);
-          }
-          
-          return canvas;
+    try {
+      if (isElectron()) {
+        // Usar procesamiento nativo de Electron
+        console.log('Usando procesamiento nativo de Electron para TIFF');
+        const results = await processTiffFiles(selectedFiles, {
+          dpi: options.dpi,
+          grayscale: options.grayscale
         });
-        
-        // Create processed file
-        const processedBlob = await createRealTiffFile(processedCanvases, options.dpi);
-        const downloadUrl = URL.createObjectURL(processedBlob);
-        console.log(`Archivo procesado exitosamente: ${processedCanvases.length} página(s)`);
-        
-        setProcessedFiles(prev => 
-          prev.map(processedFile => 
-            processedFile.id === newProcessedFiles[i].id
-              ? {
-                  ...processedFile,
-                  status: 'completed',
-                  downloadUrl: downloadUrl
-                }
-              : processedFile
-          )
-        );
-      } catch (error) {
-        console.error(`Error procesando archivo ${selectedFiles[i].name}:`, error);
-        setProcessedFiles(prev => 
-          prev.map(processedFile => 
-            processedFile.id === newProcessedFiles[i].id
-              ? {
-                  ...processedFile,
-                  status: 'error'
-                }
-              : processedFile
-          )
-        );
+
+        // Actualizar archivos procesados
+        results.forEach((result, index) => {
+          const blob = new Blob([result.data], { type: 'image/tiff' });
+          const downloadUrl = URL.createObjectURL(blob);
+
+          setProcessedFiles(prev => 
+            prev.map(processedFile => 
+              processedFile.id === newProcessedFiles[index].id
+                ? {
+                    ...processedFile,
+                    status: 'completed',
+                    downloadUrl: downloadUrl,
+                    processedName: result.filename
+                  }
+                : processedFile
+            )
+          );
+        });
+      } else {
+        // Usar procesamiento web (fallback)
+        console.log('Usando procesamiento web para TIFF');
+        for (let i = 0; i < selectedFiles.length; i++) {
+          try {
+            const file = selectedFiles[i];
+            console.log(`Procesando archivo: ${file.name}`);
+            
+            const canvases = await loadImageToCanvas(file);
+            console.log(`Archivo cargado: ${canvases.length} página(s)`);
+            
+            const processedCanvases = canvases.map((canvas, pageIndex) => {
+              console.log(`Procesando página ${pageIndex + 1}: ${canvas.width}x${canvas.height}`);
+              
+              if (options.grayscale) {
+                canvas = convertToGrayscale(canvas);
+                console.log(`Página ${pageIndex + 1}: Conversión a escala de grises aplicada`);
+              }
+              
+              if (options.dpi !== 96) {
+                canvas = resizeCanvas(canvas, options.dpi);
+                console.log(`Página ${pageIndex + 1}: Redimensionado a ${options.dpi} DPI: ${canvas.width}x${canvas.height}`);
+              }
+              
+              return canvas;
+            });
+            
+            const processedBlob = await createRealTiffFile(processedCanvases, options.dpi);
+            const downloadUrl = URL.createObjectURL(processedBlob);
+            console.log(`Archivo procesado exitosamente: ${processedCanvases.length} página(s)`);
+            
+            setProcessedFiles(prev => 
+              prev.map(processedFile => 
+                processedFile.id === newProcessedFiles[i].id
+                  ? {
+                      ...processedFile,
+                      status: 'completed',
+                      downloadUrl: downloadUrl
+                    }
+                  : processedFile
+              )
+            );
+          } catch (error) {
+            console.error(`Error procesando archivo ${selectedFiles[i].name}:`, error);
+            setProcessedFiles(prev => 
+              prev.map(processedFile => 
+                processedFile.id === newProcessedFiles[i].id
+                  ? {
+                      ...processedFile,
+                      status: 'error'
+                    }
+                  : processedFile
+              )
+            );
+          }
+        }
       }
+    } catch (error) {
+      console.error('Error en procesamiento TIFF:', error);
+      setProcessedFiles(prev => 
+        prev.map(file => ({ ...file, status: 'error' }))
+      );
     }
 
     setIsProcessing(false);
@@ -104,7 +136,14 @@ export default function TiffProcessorComponent() {
   };
 
   const handleDownload = (file: ProcessedFile) => {
-    if (file.downloadUrl) {
+    if (isElectron() && file.downloadUrl) {
+      // En Electron, usar el diálogo de guardado nativo
+      fetch(file.downloadUrl)
+        .then(response => response.arrayBuffer())
+        .then(buffer => saveFile(new Uint8Array(buffer), file.processedName))
+        .catch(error => console.error('Error downloading file:', error));
+    } else if (file.downloadUrl) {
+      // En web, usar descarga normal
       fetch(file.downloadUrl)
         .then(response => response.blob())
         .then(blob => downloadBlob(blob, file.processedName))
@@ -191,6 +230,7 @@ export default function TiffProcessorComponent() {
           onFilesSelected={handleFilesSelected}
           selectedFiles={selectedFiles}
           onRemoveFile={handleRemoveFile}
+          fileType="tiff"
         />
         
         {selectedFiles.length > 0 && (

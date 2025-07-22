@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
+import { isElectron, processPdfsToTiff, saveFile } from '../utils/electronProcessor';
 import { loadPDFAsImages, combinePDFs, loadPDFBytesAsImages } from '../utils/pdfProcessor';
 import { convertToGrayscale, createRealTiffFile, downloadBlob } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
@@ -30,115 +31,106 @@ export default function PdfConverter() {
 
     setIsProcessing(true);
     
-    let newProcessedFiles: ProcessedFile[];
-    
-    if (combineFiles && selectedFiles.length > 1) {
-      // Combine all PDFs into one TIFF
-      newProcessedFiles = [{
-        id: crypto.randomUUID(),
-        originalName: `${selectedFiles.length}_archivos_combinados.pdf`,
-        processedName: `combined_${selectedFiles.length}_files_multipage.tiff`,
-        type: 'pdf',
-        status: 'processing',
-        size: selectedFiles.reduce((sum, file) => sum + file.size, 0)
-      }];
-    } else {
-      // Convert each PDF separately
-      newProcessedFiles = selectedFiles.map(file => ({
-        id: crypto.randomUUID(),
-        originalName: file.name,
-        processedName: file.name.replace('.pdf', '.tiff'),
-        type: 'pdf',
-        status: 'processing',
-        size: file.size
-      }));
-    }
+    // Crear archivo de procesamiento
+    const newProcessedFile: ProcessedFile = {
+      id: crypto.randomUUID(),
+      originalName: combineFiles && selectedFiles.length > 1 
+        ? `${selectedFiles.length}_archivos_combinados.pdf`
+        : selectedFiles[0].name,
+      processedName: combineFiles && selectedFiles.length > 1
+        ? `combined_${selectedFiles.length}_files_multipage.tiff`
+        : selectedFiles[0].name.replace('.pdf', '.tiff'),
+      type: 'pdf',
+      status: 'processing',
+      size: selectedFiles.reduce((sum, file) => sum + file.size, 0)
+    };
 
-    setProcessedFiles(newProcessedFiles);
+    setProcessedFiles([newProcessedFile]);
 
     try {
-      if (combineFiles && selectedFiles.length > 1) {
-        console.log(`Combinando ${selectedFiles.length} archivos PDF`);
-        
-        // First, combine all PDFs into a single PDF using PDF-lib
-        const combinedPdfBytes = await combinePDFs(selectedFiles);
-        
-        // Then convert the combined PDF to images
-        const allCanvases = await loadPDFBytesAsImages(combinedPdfBytes, options.dpi);
-        console.log(`Total de páginas en PDF combinado: ${allCanvases.length}`);
-        
-        // Apply grayscale if enabled
-        if (options.grayscale) {
-          allCanvases.forEach(canvas => convertToGrayscale(canvas));
-          console.log('Conversión a escala de grises aplicada');
-        }
-        
-        // Create multi-page TIFF file
-        const combinedBlob = await createRealTiffFile(allCanvases, options.dpi);
-        const downloadUrl = URL.createObjectURL(combinedBlob);
-        console.log('PDF combinado convertido a TIFF multipágina exitosamente');
-        
+      if (isElectron()) {
+        // Usar procesamiento nativo de Electron
+        console.log('Usando procesamiento nativo de Electron');
+        const result = await processPdfsToTiff(selectedFiles, {
+          dpi: options.dpi,
+          grayscale: options.grayscale,
+          combineFiles: combineFiles && selectedFiles.length > 1
+        });
+
+        // Crear URL para descarga
+        const blob = new Blob([result.data], { type: 'image/tiff' });
+        const downloadUrl = URL.createObjectURL(blob);
+
         setProcessedFiles(prev => 
           prev.map(file => 
-            file.id === newProcessedFiles[0].id
+            file.id === newProcessedFile.id
               ? {
                   ...file,
                   status: 'completed',
-                  downloadUrl: downloadUrl
+                  downloadUrl: downloadUrl,
+                  processedName: result.filename
                 }
               : file
           )
         );
       } else {
-        // Process each PDF separately
-        for (let i = 0; i < selectedFiles.length; i++) {
-          try {
-            const file = selectedFiles[i];
-            console.log(`Procesando PDF individual: ${file.name}`);
-            const canvases = await loadPDFAsImages(file, options.dpi);
-            
-            // Apply grayscale if enabled
-            if (options.grayscale) {
-              canvases.forEach(canvas => convertToGrayscale(canvas));
-              console.log('Conversión a escala de grises aplicada');
-            }
-            
-            // Convert to image
-            const finalBlob = await createRealTiffFile(canvases, options.dpi);
-            
-            const downloadUrl = URL.createObjectURL(finalBlob);
-            console.log(`PDF procesado exitosamente: ${file.name}`);
-            
-            setProcessedFiles(prev => 
-              prev.map(processedFile => 
-                processedFile.id === newProcessedFiles[i].id
-                  ? {
-                      ...processedFile,
-                      status: 'completed',
-                      downloadUrl: downloadUrl
-                    }
-                  : processedFile
-              )
-            );
-          } catch (error) {
-            console.error('Error processing PDF:', error);
-            setProcessedFiles(prev => 
-              prev.map(processedFile => 
-                processedFile.id === newProcessedFiles[i].id
-                  ? {
-                      ...processedFile,
-                      status: 'error'
-                    }
-                  : processedFile
-              )
-            );
+        // Usar procesamiento web (fallback)
+        console.log('Usando procesamiento web');
+        if (combineFiles && selectedFiles.length > 1) {
+          const combinedPdfBytes = await combinePDFs(selectedFiles);
+          const allCanvases = await loadPDFBytesAsImages(combinedPdfBytes, options.dpi);
+          
+          if (options.grayscale) {
+            allCanvases.forEach(canvas => convertToGrayscale(canvas));
           }
+          
+          const combinedBlob = await createRealTiffFile(allCanvases, options.dpi);
+          const downloadUrl = URL.createObjectURL(combinedBlob);
+          
+          setProcessedFiles(prev => 
+            prev.map(file => 
+              file.id === newProcessedFile.id
+                ? {
+                    ...file,
+                    status: 'completed',
+                    downloadUrl: downloadUrl
+                  }
+                : file
+            )
+          );
+        } else {
+          // Procesar solo el primer archivo
+          const file = selectedFiles[0];
+          const canvases = await loadPDFAsImages(file, options.dpi);
+          
+          if (options.grayscale) {
+            canvases.forEach(canvas => convertToGrayscale(canvas));
+          }
+          
+          const finalBlob = await createRealTiffFile(canvases, options.dpi);
+          const downloadUrl = URL.createObjectURL(finalBlob);
+          
+          setProcessedFiles(prev => 
+            prev.map(processedFile => 
+              processedFile.id === newProcessedFile.id
+                ? {
+                    ...processedFile,
+                    status: 'completed',
+                    downloadUrl: downloadUrl
+                  }
+                : processedFile
+            )
+          );
         }
       }
     } catch (error) {
       console.error('Error in PDF processing:', error);
       setProcessedFiles(prev => 
-        prev.map(file => ({ ...file, status: 'error' }))
+        prev.map(file => 
+          file.id === newProcessedFile.id
+            ? { ...file, status: 'error' }
+            : file
+        )
       );
     }
 
@@ -147,7 +139,14 @@ export default function PdfConverter() {
   };
 
   const handleDownload = (file: ProcessedFile) => {
-    if (file.downloadUrl) {
+    if (isElectron() && file.downloadUrl) {
+      // En Electron, usar el diálogo de guardado nativo
+      fetch(file.downloadUrl)
+        .then(response => response.arrayBuffer())
+        .then(buffer => saveFile(new Uint8Array(buffer), file.processedName))
+        .catch(error => console.error('Error downloading file:', error));
+    } else if (file.downloadUrl) {
+      // En web, usar descarga normal
       fetch(file.downloadUrl)
         .then(response => response.blob())
         .then(blob => downloadBlob(blob, file.processedName))
@@ -247,6 +246,7 @@ export default function PdfConverter() {
           onFilesSelected={handleFilesSelected}
           selectedFiles={selectedFiles}
           onRemoveFile={handleRemoveFile}
+          fileType="pdf"
         />
         
         {selectedFiles.length > 0 && (
