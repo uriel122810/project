@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Settings, Play } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ProcessingPanel from './ProcessingPanel';
-import { TiffMultipageCreator } from '../utils/tiffMultipage';
-import { downloadBlob } from '../utils/imageProcessor';
+import { loadPDFAsImages, combinePDFs, loadPDFBytesAsImages } from '../utils/pdfProcessor';
+import { convertToGrayscale, createRealTiffFile, downloadBlob } from '../utils/imageProcessor';
 import type { ProcessedFile, ProcessingOptions } from '../types';
 
 export default function PdfConverter() {
@@ -58,17 +58,25 @@ export default function PdfConverter() {
 
     try {
       if (combineFiles && selectedFiles.length > 1) {
-        console.log(`Procesando ${selectedFiles.length} archivos PDF para TIFF multipágina`);
+        console.log(`Combinando ${selectedFiles.length} archivos PDF`);
         
-        // Usar la nueva implementación que sigue la lógica del código Python
-        const tiffBlob = await TiffMultipageCreator.convertPdfsToTiff(
-          selectedFiles, 
-          options.dpi, 
-          options.grayscale
-        );
+        // First, combine all PDFs into a single PDF using PDF-lib
+        const combinedPdfBytes = await combinePDFs(selectedFiles);
         
-        const downloadUrl = URL.createObjectURL(tiffBlob);
-        console.log('PDFs convertidos a TIFF multipágina exitosamente');
+        // Then convert the combined PDF to images
+        const allCanvases = await loadPDFBytesAsImages(combinedPdfBytes, options.dpi);
+        console.log(`Total de páginas en PDF combinado: ${allCanvases.length}`);
+        
+        // Apply grayscale if enabled
+        if (options.grayscale) {
+          allCanvases.forEach(canvas => convertToGrayscale(canvas));
+          console.log('Conversión a escala de grises aplicada');
+        }
+        
+        // Create multi-page TIFF file
+        const combinedBlob = await createRealTiffFile(allCanvases, options.dpi);
+        const downloadUrl = URL.createObjectURL(combinedBlob);
+        console.log('PDF combinado convertido a TIFF multipágina exitosamente');
         
         setProcessedFiles(prev => 
           prev.map(file => 
@@ -87,15 +95,18 @@ export default function PdfConverter() {
           try {
             const file = selectedFiles[i];
             console.log(`Procesando PDF individual: ${file.name}`);
+            const canvases = await loadPDFAsImages(file, options.dpi);
             
-            // Procesar archivo individual usando la misma lógica
-            const tiffBlob = await TiffMultipageCreator.convertPdfsToTiff(
-              [file], 
-              options.dpi, 
-              options.grayscale
-            );
+            // Apply grayscale if enabled
+            if (options.grayscale) {
+              canvases.forEach(canvas => convertToGrayscale(canvas));
+              console.log('Conversión a escala de grises aplicada');
+            }
             
-            const downloadUrl = URL.createObjectURL(tiffBlob);
+            // Convert to image
+            const finalBlob = await createRealTiffFile(canvases, options.dpi);
+            
+            const downloadUrl = URL.createObjectURL(finalBlob);
             console.log(`PDF procesado exitosamente: ${file.name}`);
             
             setProcessedFiles(prev => 
